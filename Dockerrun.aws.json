@@ -1,0 +1,16 @@
+{
+  "AWSEBDockerrunVersion": "1",
+  "containerDefinitions": [
+    {
+      "name": "react-docker",
+      "image": "715841348197.dkr.ecr.us-east-2.amazonaws.com/syn/react-docker",
+      "essential": true,
+      "portMappings": [
+        {
+          "hostPort": 8080,
+          "containerPort": 80
+        }
+      ]
+    }
+  ]
+}
