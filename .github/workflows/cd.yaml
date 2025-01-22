@@ -1,0 +1,90 @@
+name: Deploy to AWS Elastic Beanstalk
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'release/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Step 2: Set up AWS CLI
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      # Step 3: Log in to Amazon ECR
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Step 4: Build and push Docker image to ECR
+      - name: Build, tag, and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: syn/react-docker
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REPOSITORY .
+          docker tag $ECR_REPOSITORY $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      # Step 5: Upload deployment package to S3
+      - name: Upload deployment package to S3
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: syn/react-docker
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # Create a Dockerrun.aws.json file
+          cat <<EOF > Dockerrun.aws.json
+          {
+            "AWSEBDockerrunVersion": "1",
+            "Image": {
+              "Name": "$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG",
+              "Update": "true"
+            },
+            "Ports": [
+              {
+                "ContainerPort": "80"
+              }
+            ]
+          }
+          EOF
+
+          cat Dockerrun.aws.json
+
+          # Zip the deployment package
+          zip deployment-package.zip Dockerrun.aws.json
+
+          # Upload the deployment package to S3
+          aws s3 cp deployment-package.zip s3://syn-s3bucket/deployment-package.zip
+
+      # Step 6: Deploy to Elastic Beanstalk
+      - name: Deploy to Elastic Beanstalk
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: syn/react-docker
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          aws elasticbeanstalk create-application-version \
+            --application-name docker \
+            --version-label $IMAGE_TAG \
+            --source-bundle S3Bucket=syn-s3bucket,S3Key=deployment-package.zip
+
+          aws elasticbeanstalk update-environment \
+            --application-name docker \
+            --environment-name Docker-env \
+            --version-label $IMAGE_TAG
+
