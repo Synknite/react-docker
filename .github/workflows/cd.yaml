@@ -63,6 +63,8 @@ jobs:
           }
           EOF
 
+          cat Dockerrun.aws.json
+
           # Zip the deployment package
           zip deployment-package.zip Dockerrun.aws.json
 
@@ -77,12 +79,12 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           aws elasticbeanstalk create-application-version \
-            --application-name my-app \
+            --application-name docker \
             --version-label $IMAGE_TAG \
             --source-bundle S3Bucket=syn-s3bucket,S3Key=deployment-package.zip
 
           aws elasticbeanstalk update-environment \
-            --application-name my-app \
-            --environment-name my-app-env \
+            --application-name docker \
+            --environment-name Docker-env \
             --version-label $IMAGE_TAG
 
